@@ -6,7 +6,7 @@ It covers manual `/title` commands, including a title queued before the first me
 
 ## tmux
 
-Inside tmux, the plugin uses the originating `$TMUX_PANE` to rename only its containing window. Explicitly naming a tmux window disables tmux automatic window renaming for that window, so Hermes titles persist rather than being overwritten by the running process name.
+Inside tmux, the plugin uses the originating `$TMUX_PANE` to rename only its containing window. It also enables tmux terminal-title propagation and sets it to the active window name, so the outer terminal tab shows the Hermes title instead of tmux's default session summary (for example, `1219: 1 windows (attached)`). Explicitly naming a tmux window disables tmux automatic window renaming for that window, so Hermes titles persist rather than being overwritten by the running process name.
 
 ## Install
 

@@ -27,27 +27,36 @@ def _safe_terminal_title(value: Any) -> str:
     ) or "Hermes"
 
 
-def _rename_tmux_window(title: str) -> None:
-    """Rename the active tmux window when Hermes is running inside tmux.
-
-    ``TMUX_PANE`` selects the precise originating pane, avoiding accidental
-    renames of the active window in a concurrently used tmux client. tmux
-    disables automatic window renaming for an explicitly named window.
-    """
-    pane = os.environ.get("TMUX_PANE")
-    if not os.environ.get("TMUX") or not pane:
-        return
+def _run_tmux(*args: str) -> None:
+    """Run a cosmetic tmux command without affecting Hermes behavior."""
     try:
         subprocess.run(
-            ["tmux", "rename-window", "-t", pane, title],
+            ["tmux", *args],
             check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=1,
         )
     except (OSError, subprocess.SubprocessError):
-        # tmux integration is cosmetic and must never affect title persistence.
         return
+
+
+def _rename_tmux_window(title: str) -> None:
+    """Mirror a title to its tmux window and the outer terminal tab.
+
+    ``TMUX_PANE`` selects the precise originating pane, avoiding accidental
+    renames of the active window in a concurrently used tmux client. tmux
+    normally owns the outer terminal title and defaults ``set-titles`` to off,
+    which leaves terminals showing a session summary such as ``1219: 1 windows``
+    even after the window is named. Enable title propagation and make it follow
+    the active window name before explicitly naming the originating window.
+    """
+    pane = os.environ.get("TMUX_PANE")
+    if not os.environ.get("TMUX") or not pane:
+        return
+    _run_tmux("set-option", "-t", pane, "set-titles", "on")
+    _run_tmux("set-option", "-t", pane, "set-titles-string", "#W")
+    _run_tmux("rename-window", "-t", pane, title)
 
 
 def _write_terminal_title(title: Any) -> None:
