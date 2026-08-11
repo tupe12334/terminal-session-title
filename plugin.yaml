@@ -1,4 +1,4 @@
 name: terminal-session-title
-version: 1.1.0
-description: Update the active terminal and tmux window titles whenever Hermes persists a session title.
+version: 1.1.1
+description: Update the active terminal tab and tmux window titles whenever Hermes persists a session title.
 author: Ofek

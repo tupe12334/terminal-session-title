@@ -6,7 +6,7 @@ import importlib.util
 import os
 from pathlib import Path
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 
 _PLUGIN = Path(__file__).resolve().parents[1] / "__init__.py"
@@ -17,18 +17,37 @@ _SPEC.loader.exec_module(plugin)
 
 
 class TmuxWindowTitleTests(unittest.TestCase):
-    def test_renames_the_window_containing_the_originating_pane(self) -> None:
+    def test_renames_the_originating_window_and_propagates_it_to_the_tab(self) -> None:
         with patch.dict(
             os.environ, {"TMUX": "/tmp/tmux.sock,1,2", "TMUX_PANE": "%42"}, clear=False
         ), patch.object(plugin.subprocess, "run") as run:
             plugin._rename_tmux_window("Focused title")
 
-        run.assert_called_once_with(
-            ["tmux", "rename-window", "-t", "%42", "Focused title"],
-            check=False,
-            stdout=plugin.subprocess.DEVNULL,
-            stderr=plugin.subprocess.DEVNULL,
-            timeout=1,
+        self.assertEqual(
+            run.call_args_list,
+            [
+                call(
+                    ["tmux", "set-option", "-t", "%42", "set-titles", "on"],
+                    check=False,
+                    stdout=plugin.subprocess.DEVNULL,
+                    stderr=plugin.subprocess.DEVNULL,
+                    timeout=1,
+                ),
+                call(
+                    ["tmux", "set-option", "-t", "%42", "set-titles-string", "#W"],
+                    check=False,
+                    stdout=plugin.subprocess.DEVNULL,
+                    stderr=plugin.subprocess.DEVNULL,
+                    timeout=1,
+                ),
+                call(
+                    ["tmux", "rename-window", "-t", "%42", "Focused title"],
+                    check=False,
+                    stdout=plugin.subprocess.DEVNULL,
+                    stderr=plugin.subprocess.DEVNULL,
+                    timeout=1,
+                ),
+            ],
         )
 
     def test_does_not_invoke_tmux_outside_a_tmux_pane(self) -> None:
