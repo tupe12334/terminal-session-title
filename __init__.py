@@ -9,12 +9,15 @@ unaffected.
 
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 from typing import Any, Callable
 
 
 _ORIGINAL_SETTER_ATTR = "_terminal_session_title_original_setter"
 _ORIGINAL_CLI_COMMAND_ATTR = "_terminal_session_title_original_process_command"
+_ORIGINAL_CLI_RUN_ATTR = "_terminal_session_title_original_run"
 
 
 def _safe_terminal_title(value: Any) -> str:
@@ -24,32 +27,64 @@ def _safe_terminal_title(value: Any) -> str:
     ) or "Hermes"
 
 
+def _rename_tmux_window(title: str) -> None:
+    """Rename the active tmux window when Hermes is running inside tmux.
+
+    ``TMUX_PANE`` selects the precise originating pane, avoiding accidental
+    renames of the active window in a concurrently used tmux client. tmux
+    disables automatic window renaming for an explicitly named window.
+    """
+    pane = os.environ.get("TMUX_PANE")
+    if not os.environ.get("TMUX") or not pane:
+        return
+    try:
+        subprocess.run(
+            ["tmux", "rename-window", "-t", pane, title],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=1,
+        )
+    except (OSError, subprocess.SubprocessError):
+        # tmux integration is cosmetic and must never affect title persistence.
+        return
+
+
 def _write_terminal_title(title: Any) -> None:
-    """Set the controlling terminal's title without visible terminal text.
+    """Set the controlling terminal and active tmux-window titles.
 
     Prompt-toolkit can replace ``sys.stdout`` with a non-TTY proxy while Hermes
     runs. Writing directly to ``/dev/tty`` keeps OSC controls on the terminal
     that launched Hermes (including VS Code's integrated terminal) instead of
-    silently discarding them through that proxy. Gateway/cron jobs normally
+    silently discarding them through that proxy. When the process is inside
+    tmux, its containing window is renamed too. Gateway/cron/background jobs
     have no controlling TTY and harmlessly fall through to a no-op.
     """
-    sequence = f"\x1b]0;{_safe_terminal_title(title)}\x07\x1b]2;{_safe_terminal_title(title)}\x07"
+    safe_title = _safe_terminal_title(title)
+    sequence = f"\x1b]0;{safe_title}\x07\x1b]2;{safe_title}\x07"
+    wrote_to_terminal = False
     try:
         with open("/dev/tty", "w", encoding="utf-8", errors="ignore") as tty:
-            tty.write(sequence)
-            tty.flush()
-        return
+            if tty.isatty():
+                tty.write(sequence)
+                tty.flush()
+                wrote_to_terminal = True
     except OSError:
         pass
 
-    try:
-        if not sys.stdout.isatty():
+    if not wrote_to_terminal:
+        try:
+            if not sys.stdout.isatty():
+                return
+            sys.stdout.write(sequence)
+            sys.stdout.flush()
+            wrote_to_terminal = True
+        except Exception:
+            # A terminal title is cosmetic; it must never affect persistence.
             return
-        sys.stdout.write(sequence)
-        sys.stdout.flush()
-    except Exception:
-        # A terminal title is cosmetic; it must never affect title persistence.
-        return
+
+    if wrote_to_terminal:
+        _rename_tmux_window(safe_title)
 
 
 def _install_title_writer() -> None:
@@ -106,7 +141,40 @@ def _install_pending_cli_title_writer() -> None:
     HermesCLI.process_command = wrapped
 
 
+def _install_cli_close_title_writer() -> None:
+    """Leave the CLI terminal named for the session that just closed.
+
+    ``HermesCLI.run`` owns interactive teardown for `/exit`, EOF, signals, and
+    terminal-window closes. Its ``finally`` block flushes and closes the session,
+    so a wrapper's own ``finally`` is a narrow, reliable place to publish the
+    opaque session ID as a copyable ``hermes --resume`` target.
+    """
+    try:
+        from cli import HermesCLI
+    except Exception:
+        return
+
+    if getattr(HermesCLI, _ORIGINAL_CLI_RUN_ATTR, None) is not None:
+        return
+
+    original: Callable[..., Any] = HermesCLI.run
+
+    def wrapped(self: Any, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return original(self, *args, **kwargs)
+        finally:
+            session_id = getattr(self, "session_id", None)
+            agent = getattr(self, "agent", None)
+            session_id = getattr(agent, "session_id", None) or session_id
+            if session_id:
+                _write_terminal_title(session_id)
+
+    setattr(HermesCLI, _ORIGINAL_CLI_RUN_ATTR, original)
+    HermesCLI.run = wrapped
+
+
 def register(ctx: Any) -> None:
     """Install title writers before commands or persistence can run."""
     _install_title_writer()
     _install_pending_cli_title_writer()
+    _install_cli_close_title_writer()

@@ -1,8 +1,12 @@
 # terminal-session-title
 
-A native [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin that mirrors session titles to the active terminal window/tab title.
+A native [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin that mirrors session titles to the active terminal tab and, when running inside tmux, its containing tmux window.
 
-It covers manual `/title` commands, including a title queued before the first message, plus Hermes-generated session titles. The plugin emits terminal title control sequences only when it has a controlling TTY, so gateway, cron, and background processes are unaffected.
+It covers manual `/title` commands, including a title queued before the first message, plus Hermes-generated session titles. When an interactive CLI chat closes, it changes both titles to the exact session ID (for example, `20260811_204918_98afaf`) so the tab/window is an immediate `hermes --resume` target. The plugin emits terminal title control sequences and invokes tmux only when it has a controlling TTY, so gateway, cron, and background processes are unaffected.
+
+## tmux
+
+Inside tmux, the plugin uses the originating `$TMUX_PANE` to rename only its containing window. Explicitly naming a tmux window disables tmux automatic window renaming for that window, so Hermes titles persist rather than being overwritten by the running process name.
 
 ## Install
 
