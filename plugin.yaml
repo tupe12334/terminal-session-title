@@ -1,0 +1,4 @@
+name: terminal-session-title
+version: 1.0.0
+description: Update the active terminal window title whenever Hermes persists a session title.
+author: Ofek
