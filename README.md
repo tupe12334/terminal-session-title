@@ -32,6 +32,12 @@ This plugin wraps Hermes' internal `SessionDB._set_session_title` persistence bo
 
 A native Hermes plugin is a directory containing `plugin.yaml` and an `__init__.py` with `register(ctx)`. The manifest name and directory name are both `terminal-session-title`.
 
+Run the standard-library test suite:
+
+```sh
+python3 -m unittest discover -s tests -v
+```
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
